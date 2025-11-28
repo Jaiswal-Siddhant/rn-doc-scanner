@@ -1,0 +1,17 @@
+{
+  "cxxNamespace": ["docscanner"],
+  "ios": {
+    "iosModuleName": "DocScanner"
+  },
+  "android": {
+    "androidNamespace": ["docscanner"],
+    "androidCxxLibName": "docscanner"
+  },
+  "autolinking": {
+    "DocScanner": {
+      "swift": "DocScanner",
+      "kotlin": "DocScanner"
+    }
+  },
+  "ignorePaths": ["node_modules"]
+}
