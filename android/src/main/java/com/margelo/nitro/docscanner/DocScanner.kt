@@ -93,7 +93,7 @@ class DocScanner : HybridDocScannerSpec() {
     }
   }
 
-  override fun scanDocument(): Promise<Array<String>> {
+  override fun scanDocument(options: ScanOptions): Promise<Array<String>> {
     return Promise.async {
       suspendCoroutine { continuation ->
         try {
@@ -105,14 +105,17 @@ class DocScanner : HybridDocScannerSpec() {
             )
           }
 
-          val options = GmsDocumentScannerOptions.Builder()
-            .setGalleryImportAllowed(false)
-            .setPageLimit(2)
+          val isGalleryImportAllowed = options.galleryImport ?: false;
+          val pageLimit = (options.pages ?: 1.0).toInt();
+
+          val gmsBuilder = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(isGalleryImportAllowed)
+            .setPageLimit(pageLimit)
             .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
             .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
             .build()
 
-          val scanner = GmsDocumentScanning.getClient(options)
+          val scanner = GmsDocumentScanning.getClient(gmsBuilder)
           Log.d("SCANNER_CONTENT_HERE", scanner.toString())
 
           val context = NitroModules.applicationContext

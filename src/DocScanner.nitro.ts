@@ -5,8 +5,12 @@ export interface ScanResult {
   pdf?: { uri: string; pageCount: number };
 }
 
+export interface ScanOptions {
+  galleryImport?: boolean;
+  pages?: number;
+}
+
 export interface DocScanner
   extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
-  multiply(a: number, b: number): number;
-  scanDocument(): Promise<string[]>;
+  scanDocument(options?: ScanOptions): Promise<string[]>;
 }
