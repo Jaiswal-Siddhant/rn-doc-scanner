@@ -20,10 +20,10 @@ It allows users to scan documents with high accuracy, crop, resize, apply filter
 - [x] Android Support 
 - [ ] iOS Support (WIP)  
 - [ ] Add options for following
-    - [ ] Crop Tool  
-    - [ ] Resize  
+    - [x] Crop Tool  
+    - [x] Resize  
     - [ ] Filters (In Progress)  
-    - [ ] Multi-page Scan  
+    - [x] Multi-page Scan (Number of pages) 
     - [ ] PDF Export  
 
 
