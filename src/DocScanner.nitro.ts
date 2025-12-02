@@ -8,5 +8,5 @@ export interface ScanResult {
 export interface DocScanner
   extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   multiply(a: number, b: number): number;
-  scanDocument(): void;
+  scanDocument(): Promise<string[]>;
 }

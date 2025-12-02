@@ -6,10 +6,6 @@ const DocScannerHybridObject =
 
 console.log('DocScannerHybridObject', DocScannerHybridObject);
 
-export function multiply(a: number, b: number): number {
-  return DocScannerHybridObject.multiply(a, b);
-}
-
 export async function scanDocument() {
   return await DocScannerHybridObject.scanDocument();
 }
