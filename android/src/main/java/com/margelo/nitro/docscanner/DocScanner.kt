@@ -22,10 +22,6 @@ import kotlin.coroutines.suspendCoroutine
 
 @DoNotStrip
 class DocScanner : HybridDocScannerSpec() {
-  override fun multiply(a: Double, b: Double): Double {
-    return a * b
-  }
-
   companion object {
     private const val MY_REQUEST_CODE = 1001
   }

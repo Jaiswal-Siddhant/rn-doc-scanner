@@ -1,17 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
-import * as Scanner from 'react-native-doc-scanner';
-
-const result = Scanner.multiply(3, 7);
+import { scanDocument } from 'react-native-doc-scanner';
 
 export default function App() {
-  const scanDocument = async () => {
-    const data = await Scanner.scanDocument();
+  const [result, setResult] = useState<string>('');
+
+  const scan = async () => {
+    const data = await scanDocument();
+    setResult(data.join('\n'));
     console.log({ data });
   };
 
   useEffect(() => {
-    scanDocument();
+    scan();
   }, []);
 
   return (
