@@ -8,16 +8,17 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
-import androidx.core.app.ComponentActivity
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.bridge.BaseActivityEventListener
-import com.facebook.react.bridge.ReactApplicationContext
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanner
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.margelo.nitro.NitroModules
+import com.margelo.nitro.core.Promise
 import java.io.File
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 
 @DoNotStrip
 class DocScanner : HybridDocScannerSpec() {
@@ -28,6 +29,9 @@ class DocScanner : HybridDocScannerSpec() {
   companion object {
     private const val MY_REQUEST_CODE = 1001
   }
+
+  // Store the continuation to resume it later
+  private var pendingContinuation: ((Result<Array<String>>) -> Unit)? = null
 
   private fun copyUriToFile(uri: Uri, context: Context): String {
     val inputStream = context.contentResolver.openInputStream(uri)
@@ -51,76 +55,104 @@ class DocScanner : HybridDocScannerSpec() {
       resultCode: Int,
       data: Intent?
     ) {
-      val res: ArrayList<String> = ArrayList();
+      if (requestCode == MY_REQUEST_CODE) {
+        if (resultCode == Activity.RESULT_OK) {
+          try {
+            val result = GmsDocumentScanningResult.fromActivityResultIntent(data)
+            val res: ArrayList<String> = ArrayList()
 
-      if (requestCode == MY_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-        try {
-          val result = GmsDocumentScanningResult.fromActivityResultIntent(data)
-
-
-          val pageCount = result?.pages?.size ?: 0
-          if (pageCount == 0) {
-            throw Exception("No files scanned!")
-          }
-
-          // Get image URIs
-          result?.pages?.forEach { page ->
-            val imageUri = page.imageUri // Uri of scanned image
-            val imagePath = NitroModules.applicationContext?.let {
-              copyUriToFile(
-                imageUri,
-                context = it
-              )
+            val pageCount = result?.pages?.size ?: 0
+            if (pageCount == 0) {
+              pendingContinuation?.invoke(Result.failure(Exception("No files scanned!")))
+              pendingContinuation = null
+              return
             }
-            res.add(imagePath.toString());
-          }
 
-          Log.d("CODE_SUCCESS", res.toString())
-        } catch (e: Exception) {
-          Log.d("CODE_EXCEPTION", e.toString())
-          throw Exception(e)
+            // Get image URIs
+            result?.pages?.forEach { page ->
+              val imageUri = page.imageUri
+              val imagePath = NitroModules.applicationContext?.let {
+                copyUriToFile(imageUri, it)
+              }
+              res.add(imagePath.toString())
+            }
+
+            Log.d("CODE_SUCCESS", res.toString())
+
+            // Resume the coroutine with success
+            pendingContinuation?.invoke(Result.success(res.toTypedArray()))
+
+          } catch (e: Exception) {
+            Log.d("CODE_EXCEPTION", e.toString())
+            pendingContinuation?.invoke(Result.failure(Exception(e)))
+          }
+        } else {
+          // User cancelled
+          pendingContinuation?.invoke(Result.failure(Exception("Scan cancelled by user")))
         }
+
+        // Clean up
+        pendingContinuation = null
       }
     }
   }
 
-  override fun scanDocument() {
-    val context = NitroModules.applicationContext
-    val options = GmsDocumentScannerOptions.Builder()
-      .setGalleryImportAllowed(false)
-      .setPageLimit(2)
-      .setResultFormats(
-        GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
-      )
-      .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
-      .build()
-
-    val scanner = GmsDocumentScanning.getClient(options)
-
-    Log.d("SCANNER_CONTENT_HERE", scanner.toString())
-    val activity = NitroModules.applicationContext?.currentActivity ?: return
-    context?.addActivityEventListener(eventListener)
-
-    GmsDocumentScanning.getClient(options)
-      .getStartScanIntent(activity)
-      .addOnSuccessListener { intentSender ->
+  override fun scanDocument(): Promise<Array<String>> {
+    return Promise.async {
+      suspendCoroutine { continuation ->
         try {
-          activity.startIntentSenderForResult(
-            intentSender,
-            1001,
-            null,
-            0,
-            0,
-            0
-          )
+          // Store the continuation
+          pendingContinuation = { result ->
+            result.fold(
+              onSuccess = { continuation.resume(it) },
+              onFailure = { continuation.resumeWithException(it) }
+            )
+          }
+
+          val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(false)
+            .setPageLimit(2)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
+            .build()
+
+          val scanner = GmsDocumentScanning.getClient(options)
+          Log.d("SCANNER_CONTENT_HERE", scanner.toString())
+
+          val context = NitroModules.applicationContext
+          val activity = context?.currentActivity ?: throw Exception("No Context found!")
+
+          // Add the event listener
+          context.addActivityEventListener(eventListener)
+
+          scanner.getStartScanIntent(activity)
+            .addOnSuccessListener { intentSender ->
+              try {
+                activity.startIntentSenderForResult(
+                  intentSender,
+                  MY_REQUEST_CODE,
+                  null,
+                  0,
+                  0,
+                  0
+                )
+              } catch (e: Exception) {
+                Log.e("DocScanner", "Failed to start intent", e)
+                pendingContinuation?.invoke(Result.failure(Exception(e)))
+                pendingContinuation = null
+              }
+            }
+            .addOnFailureListener { error ->
+              Log.e("DocScanner", "Failed to launch scanner", error)
+              pendingContinuation?.invoke(Result.failure(Exception(error)))
+              pendingContinuation = null
+            }
 
         } catch (e: Exception) {
-          Log.e("DocScanner", "Failed to start intent", e)
+          pendingContinuation?.invoke(Result.failure(e))
+          pendingContinuation = null
         }
       }
-
-      .addOnFailureListener { error ->
-        Log.e("DocScanner", "Failed to launch scanner", error)
-      }
+    }
   }
 }
