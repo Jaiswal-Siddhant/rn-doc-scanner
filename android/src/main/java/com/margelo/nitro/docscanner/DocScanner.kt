@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
+import android.webkit.MimeTypeMap
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
@@ -24,16 +25,39 @@ import kotlin.coroutines.suspendCoroutine
 class DocScanner : HybridDocScannerSpec() {
   companion object {
     private const val MY_REQUEST_CODE = 1001
+    private var outputMode = GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
   }
 
   // Store the continuation to resume it later
   private var pendingContinuation: ((Result<Array<String>>) -> Unit)? = null
 
   private fun copyUriToFile(uri: Uri, context: Context): String {
-    val inputStream = context.contentResolver.openInputStream(uri)
-    val publicDir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Scans")
+    Log.d("URI_STRING", uri.toString())
+    val contentResolver = context.contentResolver
+    val inputStream = contentResolver.openInputStream(uri)
+
+    var ext = MimeTypeMap.getFileExtensionFromUrl(uri.toString())
+
+    // If empty, try from MIME type (example: image/jpeg → jpg)
+    if (ext.isNullOrEmpty()) {
+      val mime = contentResolver.getType(uri)
+      ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+    }
+
+    // Fallback if still null
+    if (ext.isNullOrEmpty()) ext = "jpg"
+
+    // Ensure directory exists
+    val publicDir = File(
+      context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+      "Scans"
+    )
     publicDir.mkdirs()
-    val destFile = File(publicDir, "scanned_${System.currentTimeMillis()}.jpg")
+
+    val destFile = File(
+      publicDir,
+      "scanned_${System.currentTimeMillis()}.$ext"
+    )
 
     inputStream?.use { input ->
       destFile.outputStream().use { output ->
@@ -43,6 +67,7 @@ class DocScanner : HybridDocScannerSpec() {
 
     return destFile.absolutePath
   }
+
 
   private val eventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(
@@ -64,13 +89,26 @@ class DocScanner : HybridDocScannerSpec() {
               return
             }
 
-            // Get image URIs
-            result?.pages?.forEach { page ->
-              val imageUri = page.imageUri
+            if (outputMode == GmsDocumentScannerOptions.RESULT_FORMAT_PDF) {
+              Log.d("SCANNER_MODE_PDF", result?.pdf?.uri.toString())
               val imagePath = NitroModules.applicationContext?.let {
-                copyUriToFile(imageUri, it)
+                if(result?.pdf?.uri != null) {
+                  val pdfPath = NitroModules.applicationContext?.let {
+                    copyUriToFile(result.pdf!!.uri, it)
+                  }
+                  res.add(pdfPath.toString())
+                }
               }
               res.add(imagePath.toString())
+            } else {
+              // Get image URIs
+              result?.pages?.forEach { page ->
+                val imageUri = page.imageUri
+                val imagePath = NitroModules.applicationContext?.let {
+                  copyUriToFile(imageUri, it)
+                }
+                res.add(imagePath.toString())
+              }
             }
 
             Log.d("CODE_SUCCESS", res.toString())
@@ -93,7 +131,7 @@ class DocScanner : HybridDocScannerSpec() {
     }
   }
 
-  override fun scanDocument(options: ScanOptions): Promise<Array<String>> {
+  override fun scanDocument(options: ScanOptions?): Promise<Array<String>> {
     return Promise.async {
       suspendCoroutine { continuation ->
         try {
@@ -105,14 +143,23 @@ class DocScanner : HybridDocScannerSpec() {
             )
           }
 
-          val isGalleryImportAllowed = options.galleryImport ?: false;
-          val pageLimit = (options.pages ?: 1.0).toInt();
+          val isGalleryImportAllowed = options?.galleryImport ?: false
+          val pageLimit = (options?.pages ?: 1.0).toInt()
+          val resultFormat = GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+          val scannerMode =
+            options?.scannerMode?.value ?: GmsDocumentScannerOptions.SCANNER_MODE_BASE
+
+          if (resultFormat == ResultFormat.JPEG.value) {
+            outputMode = GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
+          } else {
+            outputMode = GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+          }
 
           val gmsBuilder = GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(isGalleryImportAllowed)
             .setPageLimit(pageLimit)
-            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
-            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
+            .setResultFormats(resultFormat)
+            .setScannerMode(scannerMode)
             .build()
 
           val scanner = GmsDocumentScanning.getClient(gmsBuilder)

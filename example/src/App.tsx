@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { scanDocument } from 'react-native-doc-scanner';
-import type { ScanOptions } from '../../src/DocScanner.nitro';
+import {
+  ResultFormat,
+  ScannerMode,
+  type ScanOptions,
+} from '../../src/DocScanner.nitro';
 
 const options: ScanOptions = {
   pages: 2,
   galleryImport: false,
+  scannerMode: ScannerMode.FULL,
+  resultFormat: ResultFormat.PDF,
 };
 
 export default function App() {
